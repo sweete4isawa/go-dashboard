@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
@@ -36,17 +37,49 @@ func login(w http.ResponseWriter, r *http.Request) {
 	var user map[string]string
 	json.NewDecoder(r.Body).Decode(&user)
 
-	if user["username"] == "admin" && user["password"] == "admin" {
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"user": "admin",
-		})
+	var dbUser string
+	var dbPass string
 
-		tokenStr, _ := token.SignedString(jwtKey)
-		json.NewEncoder(w).Encode(map[string]string{"token": tokenStr})
+	err := db.QueryRow("SELECT username, password FROM users WHERE username=?", user["username"]).Scan(&dbUser, &dbPass)
+
+	if err != nil || dbPass != user["password"] {
+		http.Error(w, "Unauthorized", 401)
 		return
 	}
 
-	http.Error(w, "Unauthorized", 401)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user": dbUser,
+	})
+
+	tokenStr, _ := token.SignedString(jwtKey)
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"token": tokenStr,
+	})
+}
+
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		tokenStr := r.Header.Get("Authorization")
+		if tokenStr == "" {
+			http.Error(w, "No token", 401)
+			return
+		}
+
+		tokenStr = strings.Replace(tokenStr, "Bearer ", "", 1)
+
+		_, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+			return jwtKey, nil
+		})
+
+		if err != nil {
+			http.Error(w, "Invalid token", 401)
+			return
+		}
+
+		next(w, r)
+	}
 }
 
 // GET ITEMS
@@ -81,8 +114,12 @@ func main() {
 	connectDB()
 
 	http.HandleFunc("/login", login)
-	http.HandleFunc("/items", getItems)
-	http.HandleFunc("/items/create", createItem)
+	http.HandleFunc("/items", authMiddleware(getItems))
+	http.HandleFunc("/items/create", authMiddleware(createItem))
+
+	// 🌐 static file (HTML dashboard)
+	fs := http.FileServer(http.Dir("./templates"))
+	http.Handle("/", fs)
 
 	port := os.Getenv("PORT")
 	if port == "" {
