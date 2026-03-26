@@ -117,15 +117,22 @@ func main() {
 	http.HandleFunc("/items", authMiddleware(getItems))
 	http.HandleFunc("/items/create", authMiddleware(createItem))
 
-	// 🌐 static file (HTML dashboard)
 	fs := http.FileServer(http.Dir("./templates"))
 	http.Handle("/", fs)
 
 	port := os.Getenv("PORT")
 	if port == "" {
+		port = os.Getenv("RAILWAY_PORT")
+	}
+	if port == "" {
 		port = "8080"
 	}
 
+	log.Println("Server starting...")
 	log.Println("Running on port", port)
-	http.ListenAndServe(":"+port, nil)
+
+	err := http.ListenAndServe(":"+port, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
