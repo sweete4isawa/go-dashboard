@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h2>Dashboard</h2>
+
+<input id="name" placeholder="item name">
+<button onclick="add()">Tambah</button>
+
+<ul id="list"></ul>
+
+<script>
+const token = localStorage.getItem('token')
+
+async function load() {
+  const res = await fetch('/items', {
+    headers: { Authorization: 'Bearer ' + token }
+  })
+  const data = await res.json()
+
+  list.innerHTML = ''
+  data.forEach(i => {
+    list.innerHTML += `<li>${i.name}</li>`
+  })
+}
+
+async function add() {
+  await fetch('/items/create', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token
+    },
+    body: JSON.stringify({ name: name.value })
+  })
+  load()
+}
+
+load()
+</script>
+
+</body>
+</html>
